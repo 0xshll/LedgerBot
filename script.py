@@ -13,6 +13,10 @@ from pathlib import Path
 from typing import Iterable
 
 from dotenv import load_dotenv
+import threading
+
+from fastapi import FastAPI
+import uvicorn
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, Update
 from telegram.error import Conflict, TelegramError
 from telegram.ext import (
@@ -2021,6 +2025,23 @@ def build_application() -> Application:
     return application
 
 
+def start_health_server() -> None:
+    app = FastAPI()
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok"}
+
+    port = int(os.getenv("PORT", "8080"))
+
+    def run():
+        uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")
+
+    thread = threading.Thread(target=run, daemon=True)
+    thread.start()
+    logger.info("Health server started on port %s", port)
+
+
 def main() -> None:
     init_db()
     logger.info("LedgerPilot starting (database: %s)", DATABASE_PATH)
@@ -2030,6 +2051,9 @@ def main() -> None:
         )
         raise SystemExit(1)
     logger.info("Bot token loaded.")
+    # Start health endpoint (enabled by default; set ENABLE_HEALTH=0 to disable)
+    if os.getenv("ENABLE_HEALTH", "1") != "0":
+        start_health_server()
     asyncio.set_event_loop(asyncio.new_event_loop())
     application = build_application()
     logger.info("Bot started. Listening for Telegram updates.")
